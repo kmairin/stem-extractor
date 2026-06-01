@@ -5,11 +5,13 @@ Inference + orchestration over open SOTA checkpoints (Mel-Band / BS-RoFormer,
 HT-Demucs) — see [`stem-separation-design-doc.md`](stem-separation-design-doc.md)
 for the full design and the live status tracker (§7).
 
-> **Status: v0.1 foundation.** The frozen engine interface (Milestone 0), the core
+> **Status: v0.1 working.** The frozen engine interface (Milestone 0), the core
 > orchestration (Track A: tier resolver, chunker, backend dispatch, engine), and the
-> CLI (Track E) are in place and unit-tested against a fake backend. Real separation
-> needs the `[ml]` extra installed, and the RoFormer checkpoint identifiers in the
-> registry are **unverified placeholders** pending the Track B benchmark.
+> CLI (Track E) are in place and unit-tested against a fake backend. With the `[ml]`
+> extra installed, real separation is **verified end-to-end on Apple Silicon** across
+> all tiers (fast/balanced/best + dereverb); every registry checkpoint is confirmed
+> against the audio-separator model list. Remaining: the Track B benchmark harness
+> (automated latency/SDR) and the server (Track C). See the design doc §7 log.
 
 ## Install
 

@@ -88,6 +88,10 @@ class AudioSeparatorBackend(SeparationBackend):
         self.ensure_available()
         cache_dir.mkdir(parents=True, exist_ok=True)
         want = set(stems)
+        # A 2-stem vocal separator (vocals + instrumental, no drums) labels its
+        # non-vocal output "(other)" in the filename; that *is* the instrumental,
+        # and the model's direct output beats a mix-minus-vocals residual.
+        two_stem_vocal = Stem.INSTRUMENTAL in model.stems and Stem.DRUMS not in model.stems
 
         def emit(msg: str) -> None:
             if progress:
@@ -121,6 +125,8 @@ class AudioSeparatorBackend(SeparationBackend):
                 stem = _classify(fpath.name)
                 if stem is None:
                     continue
+                if two_stem_vocal and stem is Stem.OTHER:
+                    stem = Stem.INSTRUMENTAL
                 if model.kind is ModelKind.DEREVERB and stem is not Stem.VOCALS_DRY:
                     continue
                 results[stem] = load_audio(fpath)

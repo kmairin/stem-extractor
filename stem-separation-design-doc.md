@@ -231,14 +231,14 @@ Legend: ✅ done · 🟡 in progress (code landed, real-model/hardware verificat
 | ID | Task | Track | Status | Owner | Blocks |
 |---|---|---|---|---|---|
 | M0 | Freeze `SeparationEngine` interface | — | ✅ done | kmairin | A,B,C,D,E,F |
-| A1 | Backend dispatch + CoreML/MPS wiring | A | 🟡 in progress | kmairin | A2,A3 |
+| A1 | Backend dispatch + CoreML/MPS wiring | A | ✅ done | kmairin | A2,A3 |
 | A2 | Tier resolver + chunker | A | ✅ done | kmairin | M1 |
-| A3 | Model cache + prefetch | A | 🟡 in progress | kmairin | E |
+| A3 | Model cache + prefetch | A | ✅ done | kmairin | E |
 | B1 | Model registry metadata | B | ✅ done | kmairin | A2 |
-| B2 | Latency + quality benchmark harness | B | ☐ todo | — | M1 |
+| B2 | Latency + quality benchmark harness | B | 🟡 in progress | kmairin | M1 |
 | C1 | FastAPI endpoints (mock engine) | C | ☐ todo | — | C2 |
 | C2 | Redis/RQ worker + real engine swap | C | ☐ todo | — | M2 |
-| D1 | Dereverb post-stage + flags | D | 🟡 in progress | kmairin | D2 |
+| D1 | Dereverb post-stage + flags | D | ✅ done | kmairin | D2 |
 | D2 | Wet/dry output contract | D | ✅ done | kmairin | M3 |
 | E1 | CLI + progress + prefetch | E | ✅ done | kmairin | M2 |
 | E2 | uv env + PyInstaller spike | E | 🟡 in progress | kmairin | M4 |
@@ -257,17 +257,34 @@ separation needs the `[ml]` extra installed.
   `splitwave.base` (`SeparationEngine` Protocol + `BaseSeparationEngine` ABC).
 - **A2 (done):** `tiers.resolve_tier` (fast/balanced/best → model plan, §4.2 incl.
   the `best` budget guardrail) and `chunker` (overlap-add, §4.3) — both unit-tested.
-- **A1/A3 (in progress):** `backends/` dispatch with lazy audio-separator (ONNX/CoreML
-  providers) + Demucs (MPS) wrappers; `prefetch` command + cache dir. *Pending:*
-  end-to-end run on real checkpoints/hardware; in-process model-load cache.
-- **B1 (done):** `registry.MODEL_CATALOG` seeded from §2/§9. ⚠️ RoFormer checkpoint
-  filenames are unverified placeholders (`verified=False`) — **B2 must confirm them
-  via `audio-separator --list_models` before tier defaults are locked.**
-- **D1/D2:** de-reverb post-chain + wet/dry output contract wired (§4.4); real
-  dereverb-model run unverified.
+- **A1/A3 (done):** `backends/` dispatch with lazy audio-separator (ONNX/CoreML
+  providers) + Demucs (MPS) wrappers; `prefetch` command + cache dir.
+- **B1 (done):** `registry.MODEL_CATALOG` seeded from §2/§9 (checkpoint ids
+  unverified at this point — see the real-integration entry below).
+- **D1/D2:** de-reverb post-chain + wet/dry output contract wired (§4.4).
 - **E1 (done):** `splitwave` CLI — `separate` (implicit), `env-info`, `models`,
   `prefetch`. **E2:** uv env done; PyInstaller spike todo.
-- **Next (unblocked, parallel-safe):** B2 benchmark, C server, F eval harness.
+
+**2026-05-31 — real-model integration verified on Apple Silicon (M2-class).**
+Installed the `[ml]` extra and ran the full engine on a real ~3.2 min track for
+every tier. All four paths produce valid 44.1 kHz stereo stems; A1/A3/D1 promoted
+to ✅. Backend wrappers needed one fix (below).
+
+- **B2 (checkpoint ids — confirmed):** every catalog `checkpoint` now matches
+  `Separator.list_supported_model_files()`, so all specs are `verified=True`
+  (`vocals_mel_band_roformer.ckpt`, `model_bs_roformer_ep_317_sdr_12.9755.ckpt`,
+  `model_bs_roformer_ep_368_sdr_12.9628.ckpt`, `UVR-DeEcho-DeReverb.pth`,
+  `htdemucs_ft`). The *benchmark harness* (latency+SDR automation) is still 🟡.
+- **Measured latency (warm cache, 192.7 s source):** fast/HT-Demucs ≈ 2.4× RT;
+  balanced/Mel-Band RoFormer (CoreML) ≈ 2.5× RT (77 s, well under the 2-min
+  budget); best/2-model RoFormer ensemble ≈ 0.8× RT (240 s — exceeds budget as
+  the §4.2 guardrail warns). Dereverb post-stage adds one VR pass (wet vs. dry
+  RMS Δ≈0.018, i.e. the model genuinely de-reverbs).
+- **Fix:** a 2-stem vocal RoFormer labels its non-vocal output `(other)` in the
+  filename; `AudioSeparatorBackend` now maps that straight to `instrumental` so
+  we use the model's own estimate instead of a `mix − vocals` residual.
+- **Open quality note (§8 Q2):** Mel-Band's `(other)` ≈ its residual here; the
+  benchmark (B2) still owes us the Mel-Band-vs-BS-RoFormer instrumental call.
 
 See `README.md` for quickstart. Run `pip install -e '.[ml]'` then
 `splitwave env-info` to confirm CoreML/MPS before first separation.

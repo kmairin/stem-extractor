@@ -6,12 +6,11 @@ need: which backend runs it, the checkpoint identifier, the stems it yields, and
 rough quality/size figures.
 
 NOTE ON CHECKPOINT IDS: ``checkpoint`` holds the backend-specific identifier
-(audio-separator ``--model_filename`` or Demucs model name). The exact RoFormer
-filenames evolve in the UVR/audio-separator ecosystem; ``verified=False`` marks
-specs whose identifier Track B (task B2) must confirm against
-``audio-separator --list_models`` before we lock tier defaults. The backend fails
-loudly if an identifier cannot be resolved, so an unverified id never silently
-produces wrong output.
+(audio-separator ``--model_filename`` or Demucs model name). All catalog
+identifiers were confirmed against ``Separator.list_supported_model_files()``
+on 2026-05-31 (task B2), so every spec is ``verified=True``. The backend still
+fails loudly if an identifier cannot be resolved, so a future drift in the
+upstream model list surfaces as a clear error rather than wrong output.
 """
 
 from __future__ import annotations
@@ -91,6 +90,7 @@ _SPECS: tuple[ModelSpec, ...] = (
         stems=_TWO_STEM,
         approx_vocal_sdr=12.9,
         approx_size_mb=650,
+        verified=True,  # confirmed against audio-separator model list (B2)
         source="https://arxiv.org/abs/2310.01809",
         notes="Community default for vocals; balanced-tier default. (§2)",
     ),
@@ -104,6 +104,7 @@ _SPECS: tuple[ModelSpec, ...] = (
         stems=_TWO_STEM,
         approx_vocal_sdr=12.97,
         approx_size_mb=650,
+        verified=True,  # confirmed against audio-separator model list (B2)
         source="https://arxiv.org/abs/2309.02612",
         notes="SDX'23 winner family; strongest instrumental. (§2)",
     ),
@@ -117,6 +118,7 @@ _SPECS: tuple[ModelSpec, ...] = (
         stems=_TWO_STEM,
         approx_vocal_sdr=12.96,
         approx_size_mb=650,
+        verified=True,  # confirmed against audio-separator model list (B2)
         source="https://arxiv.org/abs/2309.02612",
         notes="Alternate BS-RoFormer checkpoint for ensembling. (§2)",
     ),
@@ -143,6 +145,7 @@ _SPECS: tuple[ModelSpec, ...] = (
         kind=ModelKind.DEREVERB,
         stems=(Stem.VOCALS_DRY,),
         approx_size_mb=60,
+        verified=True,  # confirmed against audio-separator model list (B2)
         source="https://github.com/openmirlab/melband-roformer-infer",
         notes="Post-stage to dry out vocals; off by default. (§4.4)",
     ),
