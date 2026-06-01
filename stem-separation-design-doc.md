@@ -242,7 +242,7 @@ Legend: ✅ done · 🟡 in progress (code landed, real-model/hardware verificat
 | D2 | Wet/dry output contract | D | ✅ done | kmairin | M3 |
 | E1 | CLI + progress + prefetch | E | ✅ done | kmairin | M2 |
 | E2 | uv env + PyInstaller spike | E | 🟡 in progress | kmairin | M4 |
-| F1 | SDR/SI-SDR eval harness | F | ☐ todo | — | F2 |
+| F1 | SDR/SI-SDR eval harness | F | ✅ done | kmairin | F2 |
 | F2 | Per-genre + parity gates in CI | F | ☐ todo | — | M3 |
 
 ### Implementation log
@@ -324,11 +324,40 @@ reconstruction need no ground truth, but the SI-SDR column stays blank unless
   call can't be made on reference-free signals; the harness is ready to settle it the
   moment ground-truth stems (a MUSDB track or a known acapella) are dropped in via `--refs`.
 
+**2026-06-01 — quality locked on MUSDB18 ground truth (B2 verdict; F1 landed).**
+Built `scripts/eval_musdb.py`: runs the real engine over N MUSDB18 test tracks and
+scores every stem with both our SI-SDR and the standard **museval BSS-Eval SDR** — the
+SDR/SI-SDR eval harness (Track F1 ✅). MUSDB's free 7-s previews supply true
+vocals/drums/bass/other stems (`scripts/fetch_musdb_sample.py`).
+
+- **10-track means (museval BSS-Eval SDR, test subset):**
+
+  | tier | model(s) | stems → SDR dB |
+  |---|---|---|
+  | fast | htdemucs_ft | vocals 8.8 · drums 7.7 · bass 9.7 · other 5.1 |
+  | balanced | mel_band_roformer_kim | vocals 11.4 · instrumental 15.8 |
+  | best | mel_band + bs_roformer_1297 | vocals 12.0 · instrumental 16.3 |
+
+- **Verdict — tier defaults confirmed on evidence:**
+  - *Vocals:* Mel-Band RoFormer beats HT-Demucs by **+2.6 dB** → `balanced` is the vocal tier.
+  - *Ensemble:* `best` adds only **+0.6 dB** for ~2.3× the wall-time (173 s vs 74 s on a
+    3-min song) → `balanced` is the default sweet spot; `best` stays an explicit opt-in.
+  - *Drums/bass/other:* bass (9.7) and drums (7.7) separate well; `other` (5.1) is the
+    intrinsic weak spot — the catch-all bucket, matching published HT-Demucs.
+- **Trust check:** our BSS-Eval means land in published `htdemucs_ft` MUSDB range
+  (~9 dB), validating the harness against an independent implementation, not just
+  internal consistency.
+- **Caveat:** 10 × 7-s previews; per-track std ±4-5 dB on percussion (genre variance).
+  Rankings are robust; treat absolute values as ±~1 dB. A full 50-track / full-length
+  run would tighten the intervals.
+- **Q2 (§8) — partially resolved:** tier defaults locked; the remaining
+  Mel-Band-vs-BS-RoFormer *per-model* instrumental call is the next probe.
+
 ---
 
 ## 8. Open questions for the team
 1. Ship MLX backend in v1 or keep ONNX/CoreML only and add MLX in M4?
-2. Default to Mel-Band RoFormer (best vocals) or BS-RoFormer (best instrumental)? → Track B harness is in place (B2 ✅); reference-free signals can't settle it — needs ground-truth stems via `splitwave bench --refs` (MUSDB / known acapella).
+2. Default to Mel-Band RoFormer (best vocals) or BS-RoFormer (best instrumental)? → **Tier defaults locked on MUSDB18 ground truth** (10-track eval, 2026-06-01: `balanced` = Mel-Band wins vocals at 11.4 dB BSS-SDR, `best` ensemble adds only +0.6 dB). Remaining sub-question — does BS-RoFormer *alone* beat Mel-Band *alone* on instrumental? — needs a per-model standalone eval (next probe via `resolve_backend` + `scripts/eval_musdb.py`).
 3. Server: stateless stem download vs. persisted stem store (S3) — depends on hosting plan.
 
 ---

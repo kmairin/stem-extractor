@@ -11,8 +11,9 @@ for the full design and the live status tracker (§7).
 > extra installed, real separation is **verified end-to-end on Apple Silicon** across
 > all tiers (fast/balanced/best + dereverb); every registry checkpoint is confirmed
 > against the audio-separator model list. The **Track B2 benchmark** (`splitwave bench`)
-> now measures latency + reconstruction on any song, and true SI-SDR when given
-> reference stems. Remaining: the server (Track C) and CI eval gates (Track F).
+> measures latency + reconstruction on any song, and true SI-SDR/SDR against ground
+> truth; a 10-track **MUSDB18 eval locks the tier defaults on evidence** (see
+> *Which tier?* below). Remaining: the server (Track C) and CI eval gates (Track F).
 > See the design doc §7 log.
 
 ## Install
@@ -53,6 +54,20 @@ splitwave bench song.wav --refs truth_stems/ --json b.json  # add true SI-SDR wh
 Configuration via env vars: `SPLITWAVE_BACKEND`, `SPLITWAVE_CACHE_DIR`,
 `SPLITWAVE_OUTPUT_FORMAT`, `SPLITWAVE_DEMUCS_DEVICE`, `SPLITWAVE_LOG_LEVEL`.
 
+## Which tier should I use?
+
+Locked on a 10-track **MUSDB18** eval (museval BSS-Eval SDR — the standard metric):
+
+| Goal | Use | Measured (SDR dB, higher = better) |
+|---|---|---|
+| **Vocals / instrumental** | `balanced` *(default)* | vocals **11.4**, instrumental **15.8** — beats `fast` on vocals by **+2.6 dB** |
+| **Drums / bass / other** (4-stem) | `fast` | bass **9.7**, drums **7.7**, other **5.1** |
+| **Max quality, time no object** | `best` | only **+0.6 dB** over `balanced` for ~2.3× the runtime |
+
+**Rule of thumb:** `balanced` for vocals, `fast` for drums/bass/other, `best` only when
+wait time doesn't matter. "Other" (synths/guitars/fx) is the hardest stem for every
+model. Reproduce the numbers with `scripts/eval_musdb.py` (needs the `[eval]` extra).
+
 ## Library API
 
 ```python
@@ -87,3 +102,8 @@ src/splitwave/
 
 The engine takes an injectable `backend_factory`, so orchestration is tested with a
 fake backend — no model downloads required.
+
+Quality is measured against **MUSDB18** ground truth (`uv pip install -e '.[eval]'`):
+`scripts/fetch_musdb_sample.py` grabs one reference track for `splitwave bench --refs`,
+and `scripts/eval_musdb.py` runs the multi-track SI-SDR + BSS-Eval SDR matrix that
+locks the tier defaults above.
