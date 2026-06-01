@@ -353,11 +353,32 @@ vocals/drums/bass/other stems (`scripts/fetch_musdb_sample.py`).
 - **Q2 (§8) — partially resolved:** tier defaults locked; the remaining
   Mel-Band-vs-BS-RoFormer *per-model* instrumental call is the next probe.
 
+**2026-06-01 — Q2 fully resolved: per-model RoFormer head-to-head.**
+The tier eval never runs a single RoFormer alone (`best` *ensembles* the two), so it
+couldn't say whether BS-RoFormer alone beats Mel-Band alone on instrumental. Added
+`scripts/eval_models.py` (drives each checkpoint standalone via `resolve_backend` +
+`backend.separate`); 10 MUSDB18 test tracks, both metrics:
+
+  | model | vocals BSS dB | instrumental BSS dB | inference speed |
+  |---|---|---|---|
+  | mel_band_roformer_kim | 11.42 ± 2.6 | 15.76 ± 3.5 | ~2.1 it/s |
+  | bs_roformer_1297 | 11.85 ± 2.7 | 16.06 ± 3.8 | ~1.1 it/s |
+
+- **Finding:** BS-RoFormer is marginally ahead on *both* stems (vocals +0.43, instrumental
+  +0.30 dB), but every margin sits far inside the per-track std (±2.6–3.8 dB) — a
+  statistical tie, not a real quality gap.
+- **Decision:** keep **Mel-Band as the `balanced` default** — equal quality for ~half the
+  wall-time (≈2.1 vs ≈1.1 it/s on the same clips). No code change.
+- **Ensemble sanity:** `best` instrumental (16.3) barely exceeds BS-RoFormer *alone* (16.1),
+  so most of `best`'s instrumental edge over `balanced` comes from simply *including*
+  BS-RoFormer, not from averaging — the ensemble buys ~0.2 dB on top of the better single
+  model. Confirms `best` stays an explicit, rarely-needed opt-in.
+
 ---
 
 ## 8. Open questions for the team
 1. Ship MLX backend in v1 or keep ONNX/CoreML only and add MLX in M4?
-2. Default to Mel-Band RoFormer (best vocals) or BS-RoFormer (best instrumental)? → **Tier defaults locked on MUSDB18 ground truth** (10-track eval, 2026-06-01: `balanced` = Mel-Band wins vocals at 11.4 dB BSS-SDR, `best` ensemble adds only +0.6 dB). Remaining sub-question — does BS-RoFormer *alone* beat Mel-Band *alone* on instrumental? — needs a per-model standalone eval (next probe via `resolve_backend` + `scripts/eval_musdb.py`).
+2. ~~Default to Mel-Band RoFormer (best vocals) or BS-RoFormer (best instrumental)?~~ **RESOLVED (2026-06-01) — keep Mel-Band as the `balanced` default.** Locked on a 10-track MUSDB18 eval and a per-model head-to-head (`scripts/eval_models.py`): BS-RoFormer alone is only +0.3–0.4 dB ahead on both stems (well inside the ±3 dB per-track std — a tie) while running ~2× slower, so Mel-Band wins on quality-per-second. The `best` ensemble adds only ~0.2–0.6 dB and stays an explicit opt-in.
 3. Server: stateless stem download vs. persisted stem store (S3) — depends on hosting plan.
 
 ---
