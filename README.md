@@ -10,8 +10,10 @@ for the full design and the live status tracker (§7).
 > CLI (Track E) are in place and unit-tested against a fake backend. With the `[ml]`
 > extra installed, real separation is **verified end-to-end on Apple Silicon** across
 > all tiers (fast/balanced/best + dereverb); every registry checkpoint is confirmed
-> against the audio-separator model list. Remaining: the Track B benchmark harness
-> (automated latency/SDR) and the server (Track C). See the design doc §7 log.
+> against the audio-separator model list. The **Track B2 benchmark** (`splitwave bench`)
+> now measures latency + reconstruction on any song, and true SI-SDR when given
+> reference stems. Remaining: the server (Track C) and CI eval gates (Track F).
+> See the design doc §7 log.
 
 ## Install
 
@@ -42,6 +44,10 @@ splitwave song.wav --stems vocals --dereverb        # emits wet + dry vocals
 splitwave env-info            # ffmpeg / CoreML / MPS / backend availability
 splitwave models              # the model catalog
 splitwave prefetch balanced   # pre-download a tier's checkpoints
+
+# Benchmark latency + quality across tiers (Track B2):
+splitwave bench song.wav --tiers fast,balanced,best         # reference-free: latency + reconstruction
+splitwave bench song.wav --refs truth_stems/ --json b.json  # add true SI-SDR when ground-truth stems exist
 ```
 
 Configuration via env vars: `SPLITWAVE_BACKEND`, `SPLITWAVE_CACHE_DIR`,
@@ -66,7 +72,7 @@ and (forthcoming) server are thin shells over it.
 ```
 src/splitwave/
   types.py      config.py    base.py      # M0: frozen interface (contracts, config, ABC)
-  registry.py                              # B1: model catalog
+  registry.py   bench.py                   # B1: model catalog · B2: latency+quality harness
   tiers.py      chunker.py                 # A2: tier policy + overlap-add
   audio.py      backends/                  # A1: I/O + backend dispatch (audio-separator, Demucs)
   core.py                                  # A:  the Splitwave engine
@@ -76,7 +82,7 @@ src/splitwave/
 ## Develop
 
 ```bash
-.venv/bin/python -m pytest        # 39 tests, pure-logic + engine orchestration (no ML deps)
+.venv/bin/python -m pytest        # 52 tests, pure-logic + engine orchestration + bench metrics (no ML deps)
 ```
 
 The engine takes an injectable `backend_factory`, so orchestration is tested with a

@@ -37,7 +37,7 @@ console = Console()
 err_console = Console(stderr=True)
 
 #: Subcommands that must NOT be rewritten into `separate <file>` by the shim.
-_SUBCOMMANDS = {"separate", "env-info", "models", "prefetch"}
+_SUBCOMMANDS = {"separate", "env-info", "models", "prefetch", "bench"}
 
 
 def _build_config(backend: Optional[str], fmt: Optional[str]) -> EngineConfig:
@@ -198,6 +198,112 @@ def _warm_model(model, cfg) -> None:
 
     sep = Separator(model_file_dir=str(cfg.model_cache_dir))
     sep.load_model(model_filename=model.checkpoint)
+
+
+def _discover_refs(refs_dir: Path, input_path: Path, stems: list[Stem]) -> dict:
+    """Match ground-truth stem files in ``refs_dir`` to requested stems.
+
+    Accepts ``<stem>.<ext>`` (shared refs) or ``<input-name>_<stem>.<ext>``
+    (per-track refs); the per-track form wins. Used to enable real SI-SDR.
+    """
+    if not refs_dir.is_dir():
+        return {}
+    base = input_path.stem.lower()
+    found: dict = {}
+    candidates = [p for p in refs_dir.iterdir() if p.is_file()]
+    for stem in stems:
+        per_track = None
+        shared = None
+        for p in candidates:
+            name = p.stem.lower()
+            if name == f"{base}_{stem.value}":
+                per_track = p
+            elif name == stem.value:
+                shared = p
+        match = per_track or shared
+        if match:
+            found[stem] = match
+    return found
+
+
+@cli.command("bench")
+def bench(
+    inputs: list[Path] = typer.Argument(..., help="Audio file(s) to benchmark."),
+    tiers: str = typer.Option("fast,balanced,best", "--tiers", help="Comma-separated tiers."),
+    stems: str = typer.Option("vocals,instrumental", "--stems", "-s", help="Stem set to request."),
+    refs: Optional[Path] = typer.Option(
+        None, "--refs", help="Dir of ground-truth stems to score SI-SDR against."
+    ),
+    json_out: Optional[Path] = typer.Option(None, "--json", help="Write results JSON here."),
+    backend: Optional[str] = typer.Option(None, "--backend", "-b", help="Force a backend."),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress progress output."),
+) -> None:
+    """Measure latency + quality across tiers, then lock defaults on evidence (B2)."""
+    from .bench import BenchCase, run_case, write_json
+
+    progress = None if quiet else (lambda m: err_console.log(f"[dim]{m}[/dim]"))
+    cfg = _build_config(backend, None)
+    engine = Splitwave(cfg, progress=progress)
+
+    stem_list = [Stem.coerce(s) for s in stems.split(",") if s.strip()]
+    tier_list = [Tier(t.strip().lower()) for t in tiers.split(",") if t.strip()]
+
+    results = []
+    for inp in inputs:
+        ref_map = _discover_refs(refs, inp, stem_list) if refs else {}
+        if refs and not ref_map:
+            err_console.print(f"[yellow]no reference stems matched for {inp.name}[/yellow]")
+        case = BenchCase(mixture=inp, references=ref_map)
+        for tier in tier_list:
+            if progress:
+                progress(f"benchmarking {inp.name} @ {tier}")
+            results.append(run_case(engine, case, tier, stem_list))
+
+    scored = any(r.stem_si_sdr for r in results)
+    _print_bench(results, scored=scored)
+    if json_out:
+        write_json(results, json_out)
+        console.print(f"[dim]wrote {json_out}[/dim]")
+
+
+def _print_bench(results, *, scored: bool) -> None:
+    table = Table(title="Benchmark (latency + quality)")
+    table.add_column("input", style="cyan", no_wrap=False)
+    table.add_column("tier")
+    table.add_column("models")
+    table.add_column("wall s", justify="right")
+    table.add_column("RTF", justify="right")
+    table.add_column("infer s", justify="right")
+    table.add_column("recon dB", justify="right")
+    if scored:
+        table.add_column("SI-SDR dB", justify="right")
+    table.add_column("corr", justify="right")
+    for r in results:
+        if r.error:
+            table.add_row(r.input_name, str(r.tier), f"[red]{r.error}[/red]", "", "", "", "", *([""] if scored else []), "")
+            continue
+        rtf = f"{r.realtime_factor:.2f}x" if r.realtime_factor else "-"
+        recon = f"{r.reconstruction_db:.1f}" if r.reconstruction_db is not None else "-"
+        corr = f"{r.max_stem_correlation:.3f}" if r.max_stem_correlation is not None else "-"
+        row = [
+            r.input_name,
+            str(r.tier),
+            ", ".join(r.models),
+            f"{r.wall_seconds:.1f}",
+            rtf,
+            f"{r.inference_seconds:.1f}",
+            recon,
+        ]
+        if scored:
+            row.append(f"{r.mean_si_sdr:.1f}" if r.mean_si_sdr is not None else "-")
+        row.append(corr)
+        table.add_row(*row)
+    console.print(table)
+    if not scored:
+        console.print(
+            "[dim]no --refs given: SI-SDR (true accuracy) not measured; "
+            "recon dB and corr are reference-free signals only.[/dim]"
+        )
 
 
 def app() -> None:

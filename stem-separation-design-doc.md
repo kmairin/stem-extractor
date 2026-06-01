@@ -235,7 +235,7 @@ Legend: ✅ done · 🟡 in progress (code landed, real-model/hardware verificat
 | A2 | Tier resolver + chunker | A | ✅ done | kmairin | M1 |
 | A3 | Model cache + prefetch | A | ✅ done | kmairin | E |
 | B1 | Model registry metadata | B | ✅ done | kmairin | A2 |
-| B2 | Latency + quality benchmark harness | B | 🟡 in progress | kmairin | M1 |
+| B2 | Latency + quality benchmark harness | B | ✅ done | kmairin | M1 |
 | C1 | FastAPI endpoints (mock engine) | C | ☐ todo | — | C2 |
 | C2 | Redis/RQ worker + real engine swap | C | ☐ todo | — | M2 |
 | D1 | Dereverb post-stage + flags | D | ✅ done | kmairin | D2 |
@@ -289,11 +289,46 @@ to ✅. Backend wrappers needed one fix (below).
 See `README.md` for quickstart. Run `pip install -e '.[ml]'` then
 `splitwave env-info` to confirm CoreML/MPS before first separation.
 
+**2026-05-31 — B2 benchmark harness landed + first real latency/quality matrix.**
+`splitwave.bench` turns "which model, which tier?" into numbers: pure-numpy metric
+primitives (SI-SDR, reconstruction dB, inter-stem correlation) plus a `run_case`/
+`run_benchmark` orchestrator over the real engine, exposed as `splitwave bench`
+(13 new unit tests; 52 green total). Honest by construction — latency and
+reconstruction need no ground truth, but the SI-SDR column stays blank unless
+`--refs` ground-truth stems are supplied; we never dress a proxy up as accuracy.
+
+- **Measured matrix** (`Can We Dance — The Vamps`, 192.7 s source, warm cache, M2-class):
+
+  | tier | model(s) | wall s | RTF | recon dB | corr |
+  |---|---|---|---|---|---|
+  | fast (vocals/instr) | htdemucs_ft | 46.3 | 4.16× | 24.4 | 0.051 |
+  | fast (4-stem) | htdemucs_ft | 45.7 | 4.22× | 25.0 | 0.089 |
+  | balanced | mel_band_roformer_kim | 73.6 | 2.62× | 70.0 | 0.139 |
+  | best | mel_band + bs_roformer_1297 | 173.5 | 1.11× | 19.2 | 0.089 |
+
+- **Reconstruction ≠ accuracy (the caveat, made concrete):** balanced reconstructs at
+  70 dB because it emits one model's two *complementary* outputs (vocals + its own
+  `(other)`), which sum back to the mix by construction. `best` averages two different
+  models' decompositions, so the blended stems are no longer exact complements and
+  recon drops to 19 dB — this does **not** mean `best` separates worse. Only
+  ground-truth SI-SDR can rank true quality; reconstruction is a self-consistency
+  signal, nothing more, which is exactly why the harness refuses to headline it.
+- **SI-SDR plumbing proven:** scoring balanced against its own earlier stems as
+  pseudo-refs yields vocals 132.0 / instrumental 136.3 dB (mean 134.2) — the metric's
+  ceiling — confirming `--refs` discovery → load → score → table/JSON works end to end.
+- **Tier budgets hold (§4.2):** fast and balanced clear the 2-min budget with room
+  (46 s / 74 s); `best` runs 173 s — over budget by design, gated behind explicit
+  selection. Drums/bass/other via HT-Demucs is fast (4.2× RT) and clean (max
+  inter-stem corr 0.089).
+- **Q2 (§8) — still open, now actionable:** the Mel-Band-vs-BS-RoFormer instrumental
+  call can't be made on reference-free signals; the harness is ready to settle it the
+  moment ground-truth stems (a MUSDB track or a known acapella) are dropped in via `--refs`.
+
 ---
 
 ## 8. Open questions for the team
 1. Ship MLX backend in v1 or keep ONNX/CoreML only and add MLX in M4?
-2. Default to Mel-Band RoFormer (best vocals) or BS-RoFormer (best instrumental)? → resolve via Track B benchmark.
+2. Default to Mel-Band RoFormer (best vocals) or BS-RoFormer (best instrumental)? → Track B harness is in place (B2 ✅); reference-free signals can't settle it — needs ground-truth stems via `splitwave bench --refs` (MUSDB / known acapella).
 3. Server: stateless stem download vs. persisted stem store (S3) — depends on hosting plan.
 
 ---
