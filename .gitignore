@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# uv
+uv.lock
+
+# Caches / tooling
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Splitwave runtime
+.cache/
+models/
+*.wav
+*.flac
+*.mp3
+*.m4a
+!tests/**/fixtures/**
+out/
+stems/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

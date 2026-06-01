@@ -1,1 +1,81 @@
-# stem-extractor
+# Splitwave
+
+High-quality vocal / instrument separation engine for Apple Silicon (CLI + server).
+Inference + orchestration over open SOTA checkpoints (Mel-Band / BS-RoFormer,
+HT-Demucs) — see [`stem-separation-design-doc.md`](stem-separation-design-doc.md)
+for the full design and the live status tracker (§7).
+
+> **Status: v0.1 foundation.** The frozen engine interface (Milestone 0), the core
+> orchestration (Track A: tier resolver, chunker, backend dispatch, engine), and the
+> CLI (Track E) are in place and unit-tested against a fake backend. Real separation
+> needs the `[ml]` extra installed, and the RoFormer checkpoint identifiers in the
+> registry are **unverified placeholders** pending the Track B benchmark.
+
+## Install
+
+```bash
+uv venv && uv pip install -e ".[dev]"      # light core + tests (no ML stack)
+uv pip install -e ".[ml]"                  # add audio-separator + Demucs for real inference
+# optional: ".[server]" (FastAPI), ".[mlx]" (Apple-Silicon MLX), ".[eval]" (museval)
+```
+
+ffmpeg must be on `PATH` (used for non-WAV decode and resampling).
+
+## Usage
+
+```bash
+# Separate (the file-first form is the implicit `separate` command):
+splitwave song.mp3 --tier balanced --stems vocals,instrumental --out stems/
+
+# Quality/speed tiers (design doc §4.2):
+splitwave song.wav --tier fast        # HT-Demucs, ~4-stem, fastest
+splitwave song.wav --tier balanced    # Mel-Band RoFormer (default)
+splitwave song.wav --tier best        # RoFormer ensemble (may exceed the 2-min budget)
+
+# 4-stem + dry vocal:
+splitwave song.wav --stems vocals,drums,bass,other
+splitwave song.wav --stems vocals --dereverb        # emits wet + dry vocals
+
+# Utilities:
+splitwave env-info            # ffmpeg / CoreML / MPS / backend availability
+splitwave models              # the model catalog
+splitwave prefetch balanced   # pre-download a tier's checkpoints
+```
+
+Configuration via env vars: `SPLITWAVE_BACKEND`, `SPLITWAVE_CACHE_DIR`,
+`SPLITWAVE_OUTPUT_FORMAT`, `SPLITWAVE_DEMUCS_DEVICE`, `SPLITWAVE_LOG_LEVEL`.
+
+## Library API
+
+```python
+from splitwave import get_engine
+
+engine = get_engine()
+result = engine.separate("song.wav", tier="balanced",
+                         stems=["vocals", "instrumental"], out_dir="stems")
+print(result.stem_paths, result.realtime_factor)
+```
+
+`get_engine()` returns something satisfying the `SeparationEngine` protocol; the CLI
+and (forthcoming) server are thin shells over it.
+
+## Layout
+
+```
+src/splitwave/
+  types.py      config.py    base.py      # M0: frozen interface (contracts, config, ABC)
+  registry.py                              # B1: model catalog
+  tiers.py      chunker.py                 # A2: tier policy + overlap-add
+  audio.py      backends/                  # A1: I/O + backend dispatch (audio-separator, Demucs)
+  core.py                                  # A:  the Splitwave engine
+  cli.py                                   # E1: CLI
+```
+
+## Develop
+
+```bash
+.venv/bin/python -m pytest        # 39 tests, pure-logic + engine orchestration (no ML deps)
+```
+
+The engine takes an injectable `backend_factory`, so orchestration is tested with a
+fake backend — no model downloads required.
